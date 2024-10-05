@@ -1,0 +1,216 @@
+package com.lorinta.helloworld
+
+import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
+import android.content.Intent
+import android.content.SharedPreferences
+import android.content.pm.PackageManager
+import android.os.Build
+import android.os.Bundle
+import androidx.appcompat.app.AppCompatActivity
+import android.widget.Button
+import android.widget.TextView
+import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
+import androidx.core.content.edit
+import android.location.Location
+import android.os.Parcelable
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationServices
+import okhttp3.*
+import java.io.IOException
+
+class MainActivity : AppCompatActivity() {
+
+    private lateinit var sharedPreferences: SharedPreferences
+    private val PREFS_NAME = "TermsPrefs"
+    private val KEY_AGREED = "agreed"
+    private lateinit var fusedLocationClient: FusedLocationProviderClient
+    val lineNotifyToken = "VqaiWrOso0aMtn2bnjEnIkLmMrLWEfhaq7p4jugSIWd" // LINE Notifyトークン
+
+    private val targetLocation = Location("provider").apply {
+        latitude = 34.485785
+        longitude = 136.829723
+    }
+
+    // 位置情報権限のリクエストコード
+    private val LOCATION_PERMISSION_REQUEST_CODE = 1
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        // SharedPreferences の取得
+        sharedPreferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        val hasAgreed = sharedPreferences.getBoolean(KEY_AGREED, false)
+
+        // ユーザーが既に同意しているか確認
+        if (hasAgreed) {
+            // 同意済みなら Hello World アクティビティに直接移動
+            navigateToHelloWorld()
+        } else {
+            // 同意していない場合、利用規約を表示
+            setContentView(R.layout.activity_main)
+
+            // 利用規約の UI 要素を取得
+            val agreeButton: Button = findViewById(R.id.agreeButton)
+
+            // 同意ボタンが押されたときの処理
+            agreeButton.setOnClickListener {
+                // 同意状態を保存
+                sharedPreferences.edit {
+                    putBoolean(KEY_AGREED, true)
+                    apply()
+                }
+
+                // Hello World アクティビティに遷移
+                navigateToHelloWorld()
+            }
+        }
+    }
+
+    // Hello World アクティビティに移動する関数
+    private fun navigateToHelloWorld() {
+        // 位置情報権限をリクエスト
+        requestLocationPermission()
+
+        // レイアウトを設定し、Hello Worldのテキストを表示
+        setContentView(R.layout.activity_hello_world)
+
+        val helloWorldTextView: TextView = findViewById(R.id.helloWorldTextView)
+        helloWorldTextView.text = "Hello World"
+
+        // デバッグ用ボタンが押されたときにLINE Notifyで距離を通知
+        val button = findViewById<Button>(R.id.button)
+        button.setOnClickListener {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED) {
+                fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+                fusedLocationClient.lastLocation.addOnSuccessListener { currentLocation ->
+                    if (currentLocation != null) {
+                        val distance = currentLocation.distanceTo(targetLocation)
+                        sendLineNotify("Current distance to the target location is $distance meters.")
+                    } else {
+                        sendLineNotify("Failed to get current location.")
+                    }
+                }.addOnFailureListener {
+                    sendLineNotify("Failed to retrieve location: ${it.message}")
+                }
+            } else {
+                sendLineNotify("権限がありません。再インストールしてください。")
+            }
+        }
+    }
+
+    // 位置情報権限のリクエスト
+    private fun requestLocationPermission() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+            != PackageManager.PERMISSION_GRANTED ||
+            (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                    != PackageManager.PERMISSION_GRANTED)) {
+
+            val permissions = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                permissions.add(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+            }
+
+            ActivityCompat.requestPermissions(
+                this,
+                permissions.toTypedArray(),
+                LOCATION_PERMISSION_REQUEST_CODE
+            )
+        } else {
+            // 権限がすでに許可されている場合、LocationServiceを開始
+            startLocationService()
+        }
+    }
+
+    // LocationServiceをバックグラウンドで開始
+    private fun startLocationService() {
+        val serviceIntent = Intent(this, LocationService::class.java).apply {
+            putExtra("targetLocation", targetLocation as Parcelable)
+        }
+
+        // Android O以上でフォアグラウンドサービスとして起動
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent)
+            createNotificationChannel() // 通知チャンネルの作成
+            showForegroundNotification()
+            sendLineNotify("Location service started!")
+        } else {
+            startService(serviceIntent)
+        }
+    }
+
+    // 権限リクエストの結果処理
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                // 権限が許可された場合、サービスを開始
+                startLocationService()
+            } else {
+                // 権限が拒否された場合、LINEで通知
+                sendLineNotify("位置情報の権限がありません")
+            }
+        }
+    }
+
+    // 通知チャンネルの作成
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val serviceChannel = NotificationChannel(
+                "location_service_channel",
+                "Location Service Channel",
+                NotificationManager.IMPORTANCE_DEFAULT
+            )
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(serviceChannel)
+        }
+    }
+
+    // フォアグラウンド通知の表示
+    private fun showForegroundNotification() {
+        val notification = NotificationCompat.Builder(this, "location_service_channel")
+            .setContentTitle("Location Service")
+            .setContentText("Tracking location in the background")
+            .setSmallIcon(R.drawable.ic_location)
+            .build()
+
+        startForeground(1, notification)
+    }
+
+    // LINE Notifyで通知を送信
+    fun sendLineNotify(message: String) {
+        val client = OkHttpClient()
+        val requestBody = FormBody.Builder()
+            .add("message", message)
+            .build()
+
+        val request = Request.Builder()
+            .url("https://notify-api.line.me/api/notify")
+            .addHeader("Authorization", "Bearer $lineNotifyToken")
+            .post(requestBody)
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                e.printStackTrace()
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                if (response.isSuccessful) {
+                    runOnUiThread {
+                        // 成功時のUIの更新などがあればここに記述
+                    }
+                }
+            }
+        })
+    }
+}
