@@ -29,11 +29,11 @@ class MainActivity : AppCompatActivity() {
     private val PREFS_NAME = "TermsPrefs"
     private val KEY_AGREED = "agreed"
     private lateinit var fusedLocationClient: FusedLocationProviderClient
-    val lineNotifyToken = "VqaiWrOso0aMtn2bnjEnIkLmMrLWEfhaq7p4jugSIWd" // LINE Notifyトークン
+    val lineNotifyToken = "とくん" // LINE Notifyトークン
 
     private val targetLocation = Location("provider").apply {
-        latitude = 34.485785
-        longitude = 136.829723
+        latitude = 34.
+        longitude = 136.
     }
 
     // 位置情報権限のリクエストコード
