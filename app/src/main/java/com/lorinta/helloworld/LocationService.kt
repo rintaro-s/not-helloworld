@@ -29,7 +29,7 @@ class LocationService : Service() {
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private var targetLocation: Location? = null
 
-    val lineNotifyToken = "VqaiWrOso0aMtn2bnjEnIkLmMrLWEfhaq7p4jugSIWd" // LINE Notifyトークン
+    val lineNotifyToken = "とーくん" // LINE Notifyトークン
 
     override fun onStartCommand(intent: Intent, flags: Int, startId: Int): Int {
         // 「service開始！」をLINE Notifyに送信
@@ -97,12 +97,12 @@ class LocationService : Service() {
     }
 
     private fun sendEmail(distance: Float) {
-        val recipient = "rin.c.mint@gmail.com"
+        val recipient = "めーりゅ@gmail.com"
         val subject = "Alert!!"
         val messageBody = "You are within $distance meters of the target location."
 
-        val username = "lorinta.dev@gmail.com"
-        val password = "wfxa ptmc edok ukel"
+        val username = "めーる@gmail.com"
+        val password = "パスワード"
 
         val props = Properties().apply {
             put("mail.smtp.auth", "true")
